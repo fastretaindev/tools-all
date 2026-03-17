@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>財務 AccountAnalysis 轉換工具</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
+    <script src="https://unpkg.com/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <style>
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .spinner {
+            animation: spin 1s linear infinite;
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-2xl">
+        <!-- 標題 -->
+        <div class="text-center mb-6">
+            <h1 class="text-3xl font-bold text-gray-800 mb-2">財務 AccountAnalysis 轉換工具</h1>
+            <p class="text-gray-600">上傳CSV檔案，轉換為標準格式</p>
+        </div>
+
+        <!-- 模式切換頁籤 -->
+        <div class="mb-6 border-b border-gray-200">
+            <nav class="-mb-px flex space-x-6" aria-label="Tabs">
+                <button
+                    id="tabOriginal"
+                    class="whitespace-nowrap py-2 px-1 border-b-2 border-blue-600 text-sm font-medium text-blue-600"
+                    type="button"
+                >
+                    原版本（11 欄）
+                </button>
+                <button
+                    id="tabWithFx"
+                    class="whitespace-nowrap py-2 px-1 border-b-2 border-transparent text-sm font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                    type="button"
+                >
+                    包含外幣（15 欄）
+                </button>
+            </nav>
+        </div>
+
+        <!-- 檔案上傳區域 -->
+        <div class="mb-6">
+            <input
+                id="fileInput"
+                type="file"
+                accept=".csv"
+                class="hidden"
+            />
+            <button
+                id="fileButton"
+                class="w-full py-4 px-6 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-colors cursor-pointer"
+            >
+                <div class="text-center">
+                    <svg class="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
+                        <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-4 4H8m4 4v8m-4-4h8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                    <p class="mt-2 text-sm text-gray-600">點擊選擇CSV檔案</p>
+                </div>
+            </button>
+        </div>
+
+        <!-- 檔案資訊 -->
+        <div id="fileInfo" class="mb-6 hidden">
+            <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                <div class="flex items-center">
+                    <svg class="h-5 w-5 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
+                    </svg>
+                    <span id="fileName" class="text-sm font-medium text-gray-700"></span>
+                </div>
+                <button
+                    id="clearButton"
+                    class="text-red-500 hover:text-red-700 text-sm font-medium"
+                >
+                    重新選擇
+                </button>
+            </div>
+        </div>
+
+        <!-- 轉換按鈕 -->
+        <button
+            id="convertButton"
+            class="w-full py-3 px-6 rounded-lg font-medium transition-colors bg-green-600 text-white hover:bg-green-700 disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed"
+            disabled
+        >
+            轉換
+        </button>
+
+        <!-- 載入狀態 -->
+        <div id="loadingSection" class="mt-6 text-center hidden">
+            <div class="flex items-center justify-center">
+                <div class="spinner rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                <span class="ml-3 text-gray-600">轉換中...</span>
+            </div>
+        </div>
+
+        <!-- 下載區域 -->
+        <div id="downloadSection" class="mt-6 hidden">
+            <div class="text-center p-4 bg-green-50 rounded-lg border border-green-200">
+                <div class="flex items-center justify-center mb-2">
+                    <svg class="h-6 w-6 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                    </svg>
+                    <span class="text-green-800 font-medium">轉換完成！</span>
+                </div>
+                <p id="statusText" class="text-green-700 text-sm mb-4"></p>
+                <button
+                    id="downloadButton"
+                    class="w-full py-3 px-6 rounded-lg font-medium transition-colors bg-blue-600 text-white hover:bg-blue-700"
+                >
+                    下載檔案
+                </button>
+            </div>
+        </div>
+
+        <!-- Excel檔案處理說明 -->
+        <div class="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+            <div class="flex items-start">
+                <div class="flex-shrink-0">
+                    <svg class="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+                    </svg>
+                </div>
+                <div class="ml-3">
+                    <h3 class="text-sm font-medium text-yellow-800">Excel檔案處理說明</h3>
+                    <div class="mt-2 text-sm text-yellow-700">
+                        <p>目前版本僅支援CSV檔案轉換。如果您有Excel檔案，請按照以下步驟處理：</p>
+                        <ol class="mt-2 list-decimal list-inside space-y-1">
+                            <li>開啟Excel檔案</li>
+                            <li>點擊「檔案」→「另存新檔」</li>
+                            <li>選擇「CSV (逗號分隔)」格式</li>
+                            <li>儲存後再上傳到此工具</li>
+                        </ol>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 目標欄位順序 - 原版本（11 欄）
+        const ORIGINAL_COLUMNS = [
+            'PARTY_NUMBER',
+            'PARTY_NAME', 
+            'PERIOD_NAME',
+            'NATURAL_ACCOUNT_SEGMENT',
+            'NATURAL_ACCOUNT_DESC',
+            'GL_DATE',
+            'HEADER_DESCRIPTION',
+            'TRANSACTION_NUMBER',
+            'LINE_DESCRIPTION',
+            'ACCOUNTED_DR',
+            'ACCOUNTED_CR'
+        ];
+
+        // 目標欄位順序 - 包含外幣（15 欄）
+        const FX_COLUMNS = [
+            'PARTY_NUMBER',
+            'PARTY_NAME', 
+            'PERIOD_NAME',
+            'NATURAL_ACCOUNT_SEGMENT',
+            'NATURAL_ACCOUNT_DESC',
+            'GL_DATE',
+            'HEADER_DESCRIPTION',
+            'TRANSACTION_NUMBER',
+            'LINE_DESCRIPTION',
+            'ENTERED_CURRENCY',
+            'CONVERSION_RATE',
+            'ENTERED_DR',
+            'ACCOUNTED_DR',
+            'ENTERED_CR',
+            'ACCOUNTED_CR'
+        ];
+
+        // DOM 元素
+        const fileInput = document.getElementById('fileInput');
+        const fileButton = document.getElementById('fileButton');
+        const fileInfo = document.getElementById('fileInfo');
+        const fileName = document.getElementById('fileName');
+        const clearButton = document.getElementById('clearButton');
+        const convertButton = document.getElementById('convertButton');
+        const loadingSection = document.getElementById('loadingSection');
+        const downloadSection = document.getElementById('downloadSection');
+        const downloadButton = document.getElementById('downloadButton');
+        const statusText = document.getElementById('statusText');
+        const tabOriginal = document.getElementById('tabOriginal');
+        const tabWithFx = document.getElementById('tabWithFx');
+
+        // 狀態變數
+        let selectedFile = null;
+        let convertedData = null;
+        // currentMode: 'original' | 'fx'
+        let currentMode = 'original';
+
+        function getCurrentColumns() {
+            return currentMode === 'original' ? ORIGINAL_COLUMNS : FX_COLUMNS;
+        }
+
+        function updateTabUI() {
+            if (currentMode === 'original') {
+                tabOriginal.className = 'whitespace-nowrap py-2 px-1 border-b-2 border-blue-600 text-sm font-medium text-blue-600';
+                tabWithFx.className = 'whitespace-nowrap py-2 px-1 border-b-2 border-transparent text-sm font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300';
+            } else {
+                tabOriginal.className = 'whitespace-nowrap py-2 px-1 border-b-2 border-transparent text-sm font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300';
+                tabWithFx.className = 'whitespace-nowrap py-2 px-1 border-b-2 border-blue-600 text-sm font-medium text-blue-600';
+            }
+        }
+
+        // 初始化頁籤 UI
+        updateTabUI();
+
+        tabOriginal.addEventListener('click', () => {
+            currentMode = 'original';
+            updateTabUI();
+            // 切換模式時清掉已轉換結果，避免混淆
+            convertedData = null;
+            downloadSection.classList.add('hidden');
+        });
+
+        tabWithFx.addEventListener('click', () => {
+            currentMode = 'fx';
+            updateTabUI();
+            convertedData = null;
+            downloadSection.classList.add('hidden');
+        });
+
+        // 觸發彩帶效果
+        function triggerConfetti() {
+            console.log('🎊 開始觸發彩帶效果...');
+            
+            // 檢查 confetti 是否已載入
+            if (typeof confetti !== 'undefined') {
+                console.log('✅ confetti 已載入，開始彩帶動畫');
+                try {
+                    // 主要彩帶效果
+                    confetti({
+                        particleCount: 120,
+                        spread: 70,
+                        origin: { y: 0.6 }
+                    });
+                    
+                    // 延遲觸發第二次彩帶
+                    setTimeout(() => {
+                        confetti({
+                            particleCount: 80,
+                            spread: 50,
+                            origin: { y: 0.8 }
+                        });
+                    }, 300);
+                    
+                    console.log('🎊 彩帶動畫已觸發');
+                } catch (error) {
+                    console.error('❌ 彩帶效果執行失敗:', error);
+                }
+            } else {
+                console.log('⚠️ confetti 未載入，請檢查CDN');
+            }
+        }
+
+        // 檔案選擇處理
+        fileButton.addEventListener('click', () => {
+            fileInput.click();
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                selectedFile = file;
+                fileName.textContent = file.name;
+                fileInfo.classList.remove('hidden');
+                convertButton.disabled = false;
+                convertButton.className = 'w-full py-3 px-6 rounded-lg font-medium transition-colors bg-green-600 text-white hover:bg-green-700';
+            }
+        });
+
+        // 重新選擇檔案
+        clearButton.addEventListener('click', () => {
+            selectedFile = null;
+            convertedData = null;
+            fileInput.value = '';
+            fileInfo.classList.add('hidden');
+            downloadSection.classList.add('hidden');
+            convertButton.disabled = true;
+            convertButton.className = 'w-full py-3 px-6 rounded-lg font-medium transition-colors bg-gray-300 text-gray-500 cursor-not-allowed';
+        });
+
+        // 轉換檔案
+        convertButton.addEventListener('click', async () => {
+            if (!selectedFile) return;
+
+            convertButton.disabled = true;
+            convertButton.className = 'w-full py-3 px-6 rounded-lg font-medium transition-colors bg-gray-300 text-gray-500 cursor-not-allowed';
+            loadingSection.classList.remove('hidden');
+            downloadSection.classList.add('hidden');
+
+            try {
+                console.log('開始處理檔案:', selectedFile.name);
+                
+                // 檢查檔案類型
+                const fileExtension = selectedFile.name.split('.').pop().toLowerCase();
+                console.log('檔案類型:', fileExtension);
+                
+                // 如果是Excel檔案，顯示警語
+                if (['xlsx', 'xls'].includes(fileExtension)) {
+                    throw new Error('目前不支援Excel轉檔，請先將Excel檔案另存為CSV格式後再上傳');
+                }
+                
+                // 只處理CSV檔案
+                if (fileExtension !== 'csv') {
+                    throw new Error('請上傳CSV檔案');
+                }
+                
+                console.log('處理CSV檔案...');
+                const text = await selectedFile.text();
+                console.log('檔案大小:', text.length, '字元');
+                
+                // 使用PapaParse解析CSV
+                const result = Papa.parse(text, { 
+                    header: true, 
+                    skipEmptyLines: true,
+                    dynamicTyping: false  // 不要自動轉型
+                });
+                
+                const data = result.data;
+                console.log('CSV解析完成，資料筆數:', data.length);
+                
+                // 依目前模式取得欄位配置
+                const REQUIRED_COLUMNS = getCurrentColumns();
+
+                // 轉換資料格式 - 完整保留原始字串內容
+                convertedData = data.map(row => {
+                    const newRow = {};
+                    REQUIRED_COLUMNS.forEach(column => {
+                        const value = row[column];
+                        // 所有欄位都強制保持原始字串格式，不做任何轉換
+                        if (value !== undefined && value !== null) {
+                            let stringValue = String(value);
+                            if (column === 'PERIOD_NAME' || column === 'GL_DATE') {
+                                newRow[column] = stringValue.trim();
+                            } else {
+                                newRow[column] = stringValue.trim();
+                            }
+                        } else {
+                            newRow[column] = '';
+                        }
+                    });
+                    return newRow;
+                });
+
+                console.log('轉換完成，資料筆數:', convertedData.length);
+                
+                if (!convertedData || convertedData.length === 0) {
+                    throw new Error('轉換後沒有資料，請檢查檔案格式是否正確');
+                }
+
+                // 隱藏載入狀態，顯示下載按鈕
+                loadingSection.classList.add('hidden');
+                downloadSection.classList.remove('hidden');
+                statusText.textContent = `已轉換 ${convertedData.length} 筆資料`;
+                
+                // 立即觸發彩帶效果
+                console.log('🎊 轉換完成，觸發彩帶效果');
+                triggerConfetti();
+                
+                // 恢復轉換按鈕
+                convertButton.disabled = false;
+                convertButton.className = 'w-full py-3 px-6 rounded-lg font-medium transition-colors bg-green-600 text-white hover:bg-green-700';
+
+            } catch (error) {
+                console.error('轉換失敗:', error);
+                loadingSection.classList.add('hidden');
+                convertButton.disabled = false;
+                convertButton.className = 'w-full py-3 px-6 rounded-lg font-medium transition-colors bg-green-600 text-white hover:bg-green-700';
+                alert('檔案處理失敗：' + error.message);
+            }
+        });
+
+        // 下載檔案
+        downloadButton.addEventListener('click', () => {
+            if (!convertedData) return;
+
+            console.log('開始生成下載檔案...');
+
+            const REQUIRED_COLUMNS = getCurrentColumns();
+            
+            // 手動生成CSV內容，使用更強力的格式保護
+            let csvContent = REQUIRED_COLUMNS.map(col => `"${col}"`).join(',') + '\n';
+            
+            convertedData.forEach(row => {
+                const values = REQUIRED_COLUMNS.map(column => {
+                    let value = row[column] || '';
+                    // 確保值被雙引號包住，並處理內部引號
+                    value = String(value).replace(/"/g, '""');
+                    return `"${value}"`;
+                });
+                csvContent += values.join(',') + '\n';
+            });
+
+            // 添加UTF-8 BOM以確保Excel正確顯示中文
+            const BOM = '\uFEFF';
+            const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'converted.csv';
+            a.style.display = 'none';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            console.log('下載完成');
+        });
+    </script>
+</body>
+</html>
